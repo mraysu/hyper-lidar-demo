@@ -6,13 +6,21 @@ from vispy.scene import visuals, SceneCanvas
 import numpy as np
 from matplotlib import pyplot as plt
 from auxiliary.laserscan import LaserScan, SemLaserScan
+import time
 
+def getTime(func):
+  def wrapper(*args, **kwargs):
+    start = time.time()
+    func(*args, **kwargs)
+    end = time.time()
+    print(end-start)
+  return wrapper
 
 class LaserScanVis:
   """Class that creates and handles a visualizer for a pointcloud"""
 
   def __init__(self, scan, scan_names, label_names, offset=0,
-               semantics=True, instances=False, images=True, link=False):
+               semantics=True, instances=False, images=False, link=False, debug=False):
     self.scan = scan
     self.scan_names = scan_names
     self.label_names = label_names
@@ -22,6 +30,8 @@ class LaserScanVis:
     self.instances = instances
     self.images = images
     self.link = link
+    self.debug = debug
+
     # sanity check
     if not self.semantics and self.instances:
       print("Instances are only allowed in when semantics=True")
@@ -30,6 +40,12 @@ class LaserScanVis:
     self.reset()
     self.update_scan()
 
+  def nextScan(self, event):
+    self.offset += 1
+    self.update_scan()
+
+
+  @getTime
   def reset(self):
     """ Reset. """
     # last key press (it should have a mutex, but visualization is not
@@ -37,19 +53,24 @@ class LaserScanVis:
     self.action = "no"  # no, next, back, quit are the possibilities
 
     # new canvas prepared for visualizing data
-    self.canvas = SceneCanvas(keys='interactive', show=True)
+    self.canvas = SceneCanvas(keys='interactive', show=True, size=(1600, 600))
     # interface (n next, b back, q quit, very simple)
     self.canvas.events.key_press.connect(self.key_press)
     self.canvas.events.draw.connect(self.draw)
+    
+    #Change camera speed
+    self.clock = vispy.app.timer.Timer(interval=0.5, connect=self.nextScan)
+
     # grid
     self.grid = self.canvas.central_widget.add_grid()
+    zoom = 10.0
 
     # laserscan part
     self.scan_view = vispy.scene.widgets.ViewBox(
         border_color='white', parent=self.canvas.scene)
     self.grid.add_widget(self.scan_view, 0, 0)
     self.scan_vis = visuals.Markers()
-    self.scan_view.camera = 'turntable'
+    self.scan_view.camera = vispy.scene.cameras.turntable.TurntableCamera(scale_factor = zoom)
     self.scan_view.add(self.scan_vis)
     visuals.XYZAxis(parent=self.scan_view.scene)
     # add semantics
@@ -59,7 +80,7 @@ class LaserScanVis:
           border_color='white', parent=self.canvas.scene)
       self.grid.add_widget(self.sem_view, 0, 1)
       self.sem_vis = visuals.Markers()
-      self.sem_view.camera = 'turntable'
+      self.sem_view.camera = vispy.scene.cameras.turntable.TurntableCamera(scale_factor = zoom)
       self.sem_view.add(self.sem_vis)
       visuals.XYZAxis(parent=self.sem_view.scene)
       if self.link:
@@ -119,6 +140,7 @@ class LaserScanVis:
       self.inst_img_view.add(self.inst_img_vis)
       if self.link:
         self.inst_view.camera.link(self.scan_view.camera)
+    
 
   def get_mpl_colormap(self, cmap_name):
     cmap = plt.get_cmap(cmap_name)
@@ -130,6 +152,8 @@ class LaserScanVis:
     color_range = sm.to_rgba(np.linspace(0, 1, 256), bytes=True)[:, 2::-1]
 
     return color_range.reshape(256, 3).astype(np.float32) / 255.0
+
+  @getTime
   def update_scan(self):
     # first open data
     self.scan.open_scan(self.scan_names[self.offset])
@@ -149,9 +173,9 @@ class LaserScanVis:
     power = 16
     # print()
     range_data = np.copy(self.scan.unproj_range)
-    # print(range_data.max(), range_data.min())
+    #print(range_data.max(), range_data.min())
     range_data = range_data**(1 / power)
-    # print(range_data.max(), range_data.min())
+    #print(range_data.max(), range_data.min())
     viridis_range = ((range_data - range_data.min()) /
                      (range_data.max() - range_data.min()) *
                      255).astype(np.uint8)
@@ -203,18 +227,23 @@ class LaserScanVis:
     self.canvas.events.key_press.block()
     if self.images:
       self.img_canvas.events.key_press.block()
-    if event.key == 'N':
+    if event.key == 'N' and not self.clock.running:
       self.offset += 1
       if self.offset >= self.total:
         self.offset = 0
       self.update_scan()
-    elif event.key == 'B':
+    elif event.key == 'B' and not self.clock.running:
       self.offset -= 1
       if self.offset < 0:
         self.offset = self.total - 1
       self.update_scan()
     elif event.key == 'Q' or event.key == 'Escape':
       self.destroy()
+    elif event.key == ' ':
+      if not self.clock.running:
+        self.clock.start()
+      else:
+        self.clock.stop()
 
   def draw(self, event):
     if self.canvas.events.key_press.blocked():
