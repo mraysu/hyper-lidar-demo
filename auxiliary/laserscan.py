@@ -6,12 +6,16 @@ class LaserScan:
   """Class that contains LaserScan with x,y,z,r"""
   EXTENSIONS_SCAN = ['.bin']
 
-  def __init__(self, project=False, H=64, W=1024, fov_up=3.0, fov_down=-25.0):
+  def __init__(self, dataset,
+               project=False, H=64, W=1024, fov_up=3.0, fov_down=-25.0):
     self.project = project
     self.proj_H = H
     self.proj_W = W
     self.proj_fov_up = fov_up
     self.proj_fov_down = fov_down
+
+    self.dataset = dataset
+
     self.reset()
 
   def reset(self):
@@ -54,28 +58,39 @@ class LaserScan:
   def __len__(self):
     return self.size()
 
-  def open_scan(self, filename):
+  #def open_scan(self, filename):
+  def open_scan(self, index):
     """ Open raw scan and fill in attributes
     """
     # reset just in case there was an open structure
     self.reset()
 
     # check filename is string
-    if not isinstance(filename, str):
-      raise TypeError("Filename should be string type, "
-                      "but was {type}".format(type=str(type(filename))))
+    #if not isinstance(filename, str):
+    #  raise TypeError("Filename should be string type, "
+    #                  "but was {type}".format(type=str(type(filename))))
 
     # check extension is a laserscan
-    if not any(filename.endswith(ext) for ext in self.EXTENSIONS_SCAN):
-      raise RuntimeError("Filename extension is not valid scan file.")
+    #if not any(filename.endswith(ext) for ext in self.EXTENSIONS_SCAN):
+    #  raise RuntimeError("Filename extension is not valid scan file.")
 
     # if all goes well, open pointcloud
-    scan = np.fromfile(filename, dtype=np.float32)
-    scan = scan.reshape((-1, 4))
+    #scan = np.fromfile(filename, dtype=np.float32)
+    self.scan = self.dataset[index]
+    #scan = scan.reshape((-1, 4))
+    percentLabels = 1
+    self.mask = np.ones(len(self.scan), dtype=bool)
+    self.mask[:int(len(self.mask)*(1-percentLabels))] = False
+    np.random.shuffle(self.mask)
+
+    #scan = scan[0][self.mask, ...]
 
     # put in attribute
-    points = scan[:, 0:3]    # get xyz
-    remissions = scan[:, 3]  # get remission
+    points = self.scan[0][:, 0:3]    # get xyz
+    remissions = self.scan[0][:, 3]  # get remissions
+    self.viridis_colors = self.scan[2]
+    print(self.unproj_range)
+    #return points
     self.set_points(points, remissions)
 
   def set_points(self, points, remissions=None):
@@ -161,7 +176,7 @@ class LaserScan:
     # assing to images
     self.proj_range[proj_y, proj_x] = depth
     self.proj_xyz[proj_y, proj_x] = points
-    self.proj_remission[proj_y, proj_x] = remission
+    self.proj_remission[proj_y, proj_x] = remission.flatten()
     self.proj_idx[proj_y, proj_x] = indices
     self.proj_mask = (self.proj_idx > 0).astype(np.float32)
 
@@ -170,8 +185,9 @@ class SemLaserScan(LaserScan):
   """Class that contains LaserScan with x,y,z,r,sem_label,sem_color_label,inst_label,inst_color_label"""
   EXTENSIONS_LABEL = ['.label']
 
-  def __init__(self, sem_color_dict=None, project=False, H=64, W=1024, fov_up=3.0, fov_down=-25.0):
-    super(SemLaserScan, self).__init__(project, H, W, fov_up, fov_down)
+  def __init__(self, dataset,
+               sem_color_dict=None, project=False, H=64, W=1024, fov_up=3.0, fov_down=-25.0):
+    super(SemLaserScan, self).__init__(dataset, project, H, W, fov_up, fov_down)
     self.reset()
 
     # make semantic colors
@@ -215,22 +231,28 @@ class SemLaserScan(LaserScan):
     self.proj_inst_color = np.zeros((self.proj_H, self.proj_W, 3),
                                     dtype=float)              # [H,W,3] color
 
-  def open_label(self, filename):
+  def open_label(self, index):
     """ Open raw scan and fill in attributes
     """
     # check filename is string
-    if not isinstance(filename, str):
-      raise TypeError("Filename should be string type, "
-                      "but was {type}".format(type=str(type(filename))))
+    #if not isinstance(filename, str):
+    #  raise TypeError("Filename should be string type, "
+    #                  "but was {type}".format(type=str(type(filename))))
 
     # check extension is a laserscan
-    if not any(filename.endswith(ext) for ext in self.EXTENSIONS_LABEL):
-      raise RuntimeError("Filename extension is not valid label file.")
+    #if not any(filename.endswith(ext) for ext in self.EXTENSIONS_LABEL):
+    #  raise RuntimeError("Filename extension is not valid label file.")
 
     # if all goes well, open label
-    label = np.fromfile(filename, dtype=np.uint32)
+    # label = np.fromfile(filename, dtype=np.uint32)
+    
+    #
+    if self.scan == None:
+      self.scan = self.dataset[index]
+    label = self.scan[1]#[self.mask, ...]
     label = label.reshape((-1))
 
+    #print(np.histogram(label, bins=np.arange(20)))
     # set it
     self.set_label(label)
 

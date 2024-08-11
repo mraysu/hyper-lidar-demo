@@ -5,7 +5,6 @@ import vispy
 from vispy.scene import visuals, SceneCanvas
 import numpy as np
 from matplotlib import pyplot as plt
-from auxiliary.laserscan import LaserScan, SemLaserScan
 import time
 
 def getTime(func):
@@ -19,9 +18,11 @@ def getTime(func):
 class LaserScanVis:
   """Class that creates and handles a visualizer for a pointcloud"""
 
-  def __init__(self, scan, scan_names, label_names, offset=0,
+  def __init__(self, dataloader, dataset, scan_names, label_names, offset=0,
+               csvwriter = None, debug_auto = False,
                semantics=True, instances=False, images=False, link=False, debug=False):
-    self.scan = scan
+    self.dataloader=enumerate(dataloader)
+    self.dataset=dataset
     self.scan_names = scan_names
     self.label_names = label_names
     self.offset = offset
@@ -32,9 +33,17 @@ class LaserScanVis:
     self.link = link
     self.debug = debug
 
+    self.csvwriter = csvwriter
+
+    self.DEBUG_AUTO = debug_auto
+    self.DEBUG_AUTO_VALUE = 100
+
     # sanity check
     if not self.semantics and self.instances:
       print("Instances are only allowed in when semantics=True")
+      raise ValueError
+    if debug_auto and not csvwriter:
+      print("CSV writer required for debug")
       raise ValueError
 
     self.reset()
@@ -153,77 +162,105 @@ class LaserScanVis:
 
     return color_range.reshape(256, 3).astype(np.float32) / 255.0
 
-  @getTime
+  #@getTime
   def update_scan(self):
     # first open data
-    self.scan.open_scan(self.scan_names[self.offset])
-    if self.semantics:
-      self.scan.open_label(self.label_names[self.offset])
-      self.scan.colorize()
+    #self.scan.open_scan(self.scan_names[self.offset])
+    #self.scan.open_scan(self.offset)
+    #print(self.scan.unproj_range)
+    #if self.semantics:
+      #self.scan.open_label(self.label_names[self.offset])
+    #  self.scan.open_label(self.offset)
+    #  self.scan.colorize()
 
     # then change names
-    title = "scan " + str(self.offset)
-    self.canvas.title = title
-    if self.images:
-      self.img_canvas.title = title
+    #title = "scan " + str(self.offset)
+    #self.canvas.title = title
+    #if self.images:
+    #  self.img_canvas.title = title
 
     # then do all the point cloud stuff
-
+    start = time.time()
+    #points, _, _, viridis_colors, sem_label_color = self.dataset[self.offset]
+    _, (points, _, _, viridis_colors, sem_label_color) = next(self.dataloader)
+    #print(points)
+    #print(points.shape)
+    load = time.time()
     # plot scan
-    power = 16
+    #power = 16
     # print()
-    range_data = np.copy(self.scan.unproj_range)
+    #range_data = np.copy(self.scan.unproj_range)
     #print(range_data.max(), range_data.min())
-    range_data = range_data**(1 / power)
+    #range_data = range_data**(1 / power)
+    #print(self.scan.unproj_range)
     #print(range_data.max(), range_data.min())
-    viridis_range = ((range_data - range_data.min()) /
-                     (range_data.max() - range_data.min()) *
-                     255).astype(np.uint8)
-    viridis_map = self.get_mpl_colormap("viridis")
-    viridis_colors = viridis_map[viridis_range]
-    self.scan_vis.set_data(self.scan.points,
+    #viridis_range = ((range_data - range_data.min()) /
+    #                 (range_data.max() - range_data.min()) *
+    #                 255).astype(np.uint8)
+    #viridis_map = self.get_mpl_colormap("viridis")
+    #viridis_colors = viridis_map[viridis_range]
+
+    print("Visualizing {0} points".format(len(points)))
+    self.scan_vis.set_data(points,
                            face_color=viridis_colors[..., ::-1],
                            edge_color=viridis_colors[..., ::-1],
                            size=1)
-
+    scan_data = time.time()
     # plot semantics
     if self.semantics:
-      self.sem_vis.set_data(self.scan.points,
-                            face_color=self.scan.sem_label_color[..., ::-1],
-                            edge_color=self.scan.sem_label_color[..., ::-1],
+      self.sem_vis.set_data(points,
+                            face_color=sem_label_color[..., ::-1],
+                            edge_color=sem_label_color[..., ::-1],
                             size=1)
+    sem_data = time.time()
+
+    print("""Time Elapsed: 
+          Loading the data:\t{0}
+          Plotting Raw:\t\t{1}
+          Plotting Semantic:\t{2}
+          Total time:\t\t{3}"""
+          .format(load-start, scan_data-load, sem_data-scan_data, sem_data-start))
+    
+    if not(self.csvwriter == None):
+      self.csvwriter.writerow({
+        'Points':len(points),
+        'LoadData':load-start,
+        'PlotRaw':scan_data-load,
+        'PlotSem':sem_data-scan_data})
 
     # plot instances
-    if self.instances:
-      self.inst_vis.set_data(self.scan.points,
-                             face_color=self.scan.inst_label_color[..., ::-1],
-                             edge_color=self.scan.inst_label_color[..., ::-1],
-                             size=1)
+    #if self.instances:
+    #  self.inst_vis.set_data(self.scan.points,
+    #                         face_color=self.scan.inst_label_color[..., ::-1],
+    #                         edge_color=self.scan.inst_label_color[..., ::-1],
+    #                         size=1)
 
-    if self.images:
-      # now do all the range image stuff
-      # plot range image
-      data = np.copy(self.scan.proj_range)
-      # print(data[data > 0].max(), data[data > 0].min())
-      data[data > 0] = data[data > 0]**(1 / power)
-      data[data < 0] = data[data > 0].min()
-      # print(data.max(), data.min())
-      data = (data - data[data > 0].min()) / \
-          (data.max() - data[data > 0].min())
-      # print(data.max(), data.min())
-      self.img_vis.set_data(data)
-      self.img_vis.update()
+    #if self.images:
+    #  # now do all the range image stuff
+    #  # plot range image
+    #  data = np.copy(self.scan.proj_range)
+    #  # print(data[data > 0].max(), data[data > 0].min())
+    #  data[data > 0] = data[data > 0]**(1 / power)
+    #  data[data < 0] = data[data > 0].min()
+    #  # print(data.max(), data.min())
+    #  data = (data - data[data > 0].min()) / \
+    #      (data.max() - data[data > 0].min())
+    #  # print(data.max(), data.min())
+    #  self.img_vis.set_data(data)
+    #  self.img_vis.update()
 
-      if self.semantics:
-        self.sem_img_vis.set_data(self.scan.proj_sem_color[..., ::-1])
-        self.sem_img_vis.update()
+      # if self.semantics:
+      #   self.sem_img_vis.set_data(self.scan.proj_sem_color[..., ::-1])
+      #   self.sem_img_vis.update()
 
-      if self.instances:
-        self.inst_img_vis.set_data(self.scan.proj_inst_color[..., ::-1])
-        self.inst_img_vis.update()
+      # if self.instances:
+      #   self.inst_img_vis.set_data(self.scan.proj_inst_color[..., ::-1])
+      #   self.inst_img_vis.update()
 
   # interface
   def key_press(self, event):
+    #if self.DEBUG_AUTO:
+    #  return
     self.canvas.events.key_press.block()
     if self.images:
       self.img_canvas.events.key_press.block()
@@ -244,6 +281,10 @@ class LaserScanVis:
         self.clock.start()
       else:
         self.clock.stop()
+    elif event.key == 'D' and self.DEBUG_AUTO:
+      for i in range(self.DEBUG_AUTO_VALUE):
+        self.update_scan()
+        #time.sleep(0.1)
 
   def draw(self, event):
     if self.canvas.events.key_press.blocked():
