@@ -4,7 +4,6 @@
 import argparse
 import os
 import yaml
-from auxiliary.laserscan import LaserScan, SemLaserScan
 from auxiliary.laserscanvis import LaserScanVis
 from auxiliary.dataset import SemKITTI_sk
 from torch.utils.data import DataLoader
