@@ -7,54 +7,35 @@ import numpy as np
 from matplotlib import pyplot as plt
 import time
 
-def getTime(func):
-  def wrapper(*args, **kwargs):
-    start = time.time()
-    func(*args, **kwargs)
-    end = time.time()
-    print(end-start)
-  return wrapper
-
 class LaserScanVis:
   """Class that creates and handles a visualizer for a pointcloud"""
 
-  def __init__(self, dataloader, dataset, scan_names, label_names, offset=0,
-               csvwriter = None, debug_auto = False,
-               semantics=True, instances=False, images=False, link=False, debug=False):
+  def __init__(self, dataloader, dataset, enable_auto = False, semantics=True, verbose_runtime=False):
     self.dataloader=enumerate(dataloader)
     self.dataset=dataset
-    self.scan_names = scan_names
-    self.label_names = label_names
-    self.offset = offset
-    self.total = len(self.scan_names)
     self.semantics = semantics
-    self.instances = instances
-    self.images = images
-    self.link = link
-    self.debug = debug
+    self.csvwriter = None
+    self.verbose_runtime = verbose_runtime
 
-    self.csvwriter = csvwriter
-
-    self.DEBUG_AUTO = debug_auto
+    self.DEBUG_AUTO = enable_auto
+    # number of scans to visualize during auto visualization
     self.DEBUG_AUTO_VALUE = 100
+
+    # time (s) between each individual scan for timer-based visualization
+    self.TIME_INTERVAL = 0.5
 
     # sanity check
     if not self.semantics and self.instances:
       print("Instances are only allowed in when semantics=True")
       raise ValueError
-    if debug_auto and not csvwriter:
-      print("CSV writer required for debug")
-      raise ValueError
 
     self.reset()
     self.update_scan()
 
-  def nextScan(self, event):
-    self.offset += 1
+  # wrapper method for clock event callback
+  def next_scan(self, event):
     self.update_scan()
 
-
-  @getTime
   def reset(self):
     """ Reset. """
     # last key press (it should have a mutex, but visualization is not
@@ -68,7 +49,7 @@ class LaserScanVis:
     self.canvas.events.draw.connect(self.draw)
     
     #Change camera speed
-    self.clock = vispy.app.timer.Timer(interval=0.5, connect=self.nextScan)
+    self.clock = vispy.app.timer.Timer(interval=self.TIME_INTERVAL, connect=self.next_scan)
 
     # grid
     self.grid = self.canvas.central_widget.add_grid()
@@ -92,64 +73,8 @@ class LaserScanVis:
       self.sem_view.camera = vispy.scene.cameras.turntable.TurntableCamera(scale_factor = zoom)
       self.sem_view.add(self.sem_vis)
       visuals.XYZAxis(parent=self.sem_view.scene)
-      if self.link:
-        self.sem_view.camera.link(self.scan_view.camera)
-
-    if self.instances:
-      print("Using instances in visualizer")
-      self.inst_view = vispy.scene.widgets.ViewBox(
-          border_color='white', parent=self.canvas.scene)
-      self.grid.add_widget(self.inst_view, 0, 2)
-      self.inst_vis = visuals.Markers()
-      self.inst_view.camera = 'turntable'
-      self.inst_view.add(self.inst_vis)
-      visuals.XYZAxis(parent=self.inst_view.scene)
-      if self.link:
-        self.inst_view.camera.link(self.scan_view.camera)
-
-    # add a view for the depth
-    if self.images:
-      # img canvas size
-      self.multiplier = 1
-      self.canvas_W = 1024
-      self.canvas_H = 64
-      if self.semantics:
-        self.multiplier += 1
-      if self.instances:
-        self.multiplier += 1
-
-      # new canvas for img
-      self.img_canvas = SceneCanvas(keys='interactive', show=True,
-                                    size=(self.canvas_W, self.canvas_H * self.multiplier))
-      # grid
-      self.img_grid = self.img_canvas.central_widget.add_grid()
-      # interface (n next, b back, q quit, very simple)
-      self.img_canvas.events.key_press.connect(self.key_press)
-      self.img_canvas.events.draw.connect(self.draw)
-      self.img_view = vispy.scene.widgets.ViewBox(
-          border_color='white', parent=self.img_canvas.scene)
-      self.img_grid.add_widget(self.img_view, 0, 0)
-      self.img_vis = visuals.Image(cmap='viridis')
-      self.img_view.add(self.img_vis)
-
-      # add image semantics
-      if self.semantics:
-        self.sem_img_view = vispy.scene.widgets.ViewBox(
-            border_color='white', parent=self.img_canvas.scene)
-        self.img_grid.add_widget(self.sem_img_view, 1, 0)
-        self.sem_img_vis = visuals.Image(cmap='viridis')
-        self.sem_img_view.add(self.sem_img_vis)
-
-    # add instances
-    if self.instances:
-      self.inst_img_view = vispy.scene.widgets.ViewBox(
-          border_color='white', parent=self.img_canvas.scene)
-      self.img_grid.add_widget(self.inst_img_view, 2, 0)
-      self.inst_img_vis = visuals.Image(cmap='viridis')
-      self.inst_img_view.add(self.inst_img_vis)
-      if self.link:
-        self.inst_view.camera.link(self.scan_view.camera)
-    
+      # synchronize raw and semantic cameras
+      self.sem_view.camera.link(self.scan_view.camera)    
 
   def get_mpl_colormap(self, cmap_name):
     cmap = plt.get_cmap(cmap_name)
@@ -164,43 +89,15 @@ class LaserScanVis:
 
   #@getTime
   def update_scan(self):
-    # first open data
-    #self.scan.open_scan(self.scan_names[self.offset])
-    #self.scan.open_scan(self.offset)
-    #print(self.scan.unproj_range)
-    #if self.semantics:
-      #self.scan.open_label(self.label_names[self.offset])
-    #  self.scan.open_label(self.offset)
-    #  self.scan.colorize()
-
-    # then change names
-    #title = "scan " + str(self.offset)
-    #self.canvas.title = title
-    #if self.images:
-    #  self.img_canvas.title = title
-
-    # then do all the point cloud stuff
+    # record start time
     start = time.time()
-    #points, _, _, viridis_colors, sem_label_color = self.dataset[self.offset]
-    _, (points, _, _, viridis_colors, sem_label_color) = next(self.dataloader)
-    #print(points)
-    #print(points.shape)
-    load = time.time()
-    # plot scan
-    #power = 16
-    # print()
-    #range_data = np.copy(self.scan.unproj_range)
-    #print(range_data.max(), range_data.min())
-    #range_data = range_data**(1 / power)
-    #print(self.scan.unproj_range)
-    #print(range_data.max(), range_data.min())
-    #viridis_range = ((range_data - range_data.min()) /
-    #                 (range_data.max() - range_data.min()) *
-    #                 255).astype(np.uint8)
-    #viridis_map = self.get_mpl_colormap("viridis")
-    #viridis_colors = viridis_map[viridis_range]
 
-    print("Visualizing {0} points".format(len(points)))
+    # iterate loader to obtain datapoints and color maps
+    _, (points, _, _, viridis_colors, sem_label_color) = next(self.dataloader)
+
+    # record end loading time
+    load = time.time()
+
     self.scan_vis.set_data(points,
                            face_color=viridis_colors[..., ::-1],
                            edge_color=viridis_colors[..., ::-1],
@@ -214,12 +111,14 @@ class LaserScanVis:
                             size=1)
     sem_data = time.time()
 
-    print("""Time Elapsed: 
-          Loading the data:\t{0}
-          Plotting Raw:\t\t{1}
-          Plotting Semantic:\t{2}
-          Total time:\t\t{3}"""
-          .format(load-start, scan_data-load, sem_data-scan_data, sem_data-start))
+    if self.verbose_runtime:
+      print("Visualizing {0} points".format(len(points)))
+      print("""Time Elapsed: 
+            Loading the data:\t{0}
+            Plotting Raw:\t\t{1}
+            Plotting Semantic:\t{2}
+            Total time:\t\t{3}"""
+            .format(load-start, scan_data-load, sem_data-scan_data, sem_data-start))
     
     if not(self.csvwriter == None):
       self.csvwriter.writerow({
@@ -228,51 +127,12 @@ class LaserScanVis:
         'PlotRaw':scan_data-load,
         'PlotSem':sem_data-scan_data})
 
-    # plot instances
-    #if self.instances:
-    #  self.inst_vis.set_data(self.scan.points,
-    #                         face_color=self.scan.inst_label_color[..., ::-1],
-    #                         edge_color=self.scan.inst_label_color[..., ::-1],
-    #                         size=1)
-
-    #if self.images:
-    #  # now do all the range image stuff
-    #  # plot range image
-    #  data = np.copy(self.scan.proj_range)
-    #  # print(data[data > 0].max(), data[data > 0].min())
-    #  data[data > 0] = data[data > 0]**(1 / power)
-    #  data[data < 0] = data[data > 0].min()
-    #  # print(data.max(), data.min())
-    #  data = (data - data[data > 0].min()) / \
-    #      (data.max() - data[data > 0].min())
-    #  # print(data.max(), data.min())
-    #  self.img_vis.set_data(data)
-    #  self.img_vis.update()
-
-      # if self.semantics:
-      #   self.sem_img_vis.set_data(self.scan.proj_sem_color[..., ::-1])
-      #   self.sem_img_vis.update()
-
-      # if self.instances:
-      #   self.inst_img_vis.set_data(self.scan.proj_inst_color[..., ::-1])
-      #   self.inst_img_vis.update()
-
   # interface
   def key_press(self, event):
     #if self.DEBUG_AUTO:
     #  return
     self.canvas.events.key_press.block()
-    if self.images:
-      self.img_canvas.events.key_press.block()
     if event.key == 'N' and not self.clock.running:
-      self.offset += 1
-      if self.offset >= self.total:
-        self.offset = 0
-      self.update_scan()
-    elif event.key == 'B' and not self.clock.running:
-      self.offset -= 1
-      if self.offset < 0:
-        self.offset = self.total - 1
       self.update_scan()
     elif event.key == 'Q' or event.key == 'Escape':
       self.destroy()
@@ -284,20 +144,18 @@ class LaserScanVis:
     elif event.key == 'D' and self.DEBUG_AUTO:
       for i in range(self.DEBUG_AUTO_VALUE):
         self.update_scan()
-        #time.sleep(0.1)
 
   def draw(self, event):
     if self.canvas.events.key_press.blocked():
       self.canvas.events.key_press.unblock()
-    if self.images and self.img_canvas.events.key_press.blocked():
-      self.img_canvas.events.key_press.unblock()
 
   def destroy(self):
     # destroy the visualization
     self.canvas.close()
-    if self.images:
-      self.img_canvas.close()
     vispy.app.quit()
 
   def run(self):
+    if self.DEBUG_AUTO and not self.csvwriter:
+      print("Error: CSV writer required for auto visualization. log_data=True and log_path must be specified")
+      raise ValueError
     vispy.app.run()

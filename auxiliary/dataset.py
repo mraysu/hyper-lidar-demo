@@ -3,7 +3,6 @@ from matplotlib import pyplot as plt
 import numpy as np
 from torch.utils import data
 import yaml
-import pickle
 
 def absoluteFilePaths(directory):
     for dirpath, _, filenames in os.walk(directory):
@@ -26,7 +25,6 @@ class SemKITTI_sk(data.Dataset):
         elif imageset == 'val':
             split = semkittiyaml['split']['valid']
         elif imageset == 'test':
-            print("HI")
             split = semkittiyaml['split']['test']
         else:
             raise Exception('Split must be train/val/test')
@@ -57,10 +55,8 @@ class SemKITTI_sk(data.Dataset):
         else:
             annotated_data = np.fromfile(self.im_idx[index].replace('velodyne', 'labels')[:-3] + 'label',
                                          dtype=np.uint32).reshape((-1, 1))
-            #annotated_data = annotated_data & 0xFFFF  # delete high 16 digits binary
-            #annotated_data = np.vectorize(self.learning_map.__getitem__)(annotated_data)
 
-        #-----------------------MASK-------------------------------------
+        # generate bitmask
         mask = np.ones(len(raw_data), dtype=bool)
         mask[:int(len(mask)*(1-self.percentLabels))] = False
         np.random.shuffle(mask)
@@ -69,13 +65,9 @@ class SemKITTI_sk(data.Dataset):
         points = raw_data[:, 0:3]    # get xyz
         remissions = raw_data[:, 3]  # get remission
         label = annotated_data.astype(np.uint32)
-        #perform range projection
-        #points, remissions = self.do_range_projection(points, remissions)
         viridis_color, sem_label_color = self.get_colors(points, label)
             
         data_tuple = (points[mask, ...], remissions[mask, ...], label[mask, ...], viridis_color[mask, ...], sem_label_color[mask, ...])
-        #if self.return_ref:
-        #    data_tuple += (raw_data[:, 3][mask, ...],)
         return data_tuple
     
     def get_colors(self, points, label):
