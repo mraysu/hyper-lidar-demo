@@ -16,3 +16,21 @@ evaluate results for point clouds and labels from the SemanticKITTI dataset.
 ---
 
 #TODO: Format Citations, clean out documentation
+
+## Usage:
+````
+python3 visualize.py --help
+````
+
+For default parameters:
+````
+python3 visualize.py --dataset DATASET
+````
+To specify label config .yml: (defaults to config/semantic-kitti.yaml)
+````
+python3 visualize.py --dataset DATASET --config CONFIG.YML
+````
+To see data load and visualization Time:
+````
+python3 visualize.py --dataset DATSET --print_data
+````
