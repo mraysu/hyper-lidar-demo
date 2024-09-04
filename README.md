@@ -16,7 +16,45 @@ evaluate results for point clouds and labels from the SemanticKITTI dataset.
 ---
 
 #TODO: Format Citations, clean out documentation
-
+## Data Organization
+````
+/kitti/dataset/
+          └── sequences/
+                  ├── 00/
+                  │   ├── poses.txt
+                  │   ├── image_2/
+                  │   ├── image_3/
+                  │   ├── labels/
+                  │   │     ├ 000000.label
+                  │   │     └ 000001.label
+                  |   ├── voxels/
+                  |   |     ├ 000000.bin
+                  |   |     ├ 000000.label
+                  |   |     ├ 000000.occluded
+                  |   |     ├ 000000.invalid
+                  |   |     ├ 000001.bin
+                  |   |     ├ 000001.label
+                  |   |     ├ 000001.occluded
+                  |   |     ├ 000001.invalid
+                  │   └── velodyne/
+                  │         ├ 000000.bin
+                  │         └ 000001.bin
+                  ├── 01/
+                  ├── 02/
+                  .
+                  .
+                  .
+                  └── 21/
+````
+## Dependencies
+System dependencies
+````
+$ sudo apt install python3-dev python3-pip python3-pyqt5.qtopengl # for visualization
+````
+Python dependencies
+````
+$ sudo pip3 install -r requirements.txt
+````
 ## Usage:
 ````
 python3 visualize.py --help
