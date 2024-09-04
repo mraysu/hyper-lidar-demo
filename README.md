@@ -21,21 +21,14 @@ evaluate results for point clouds and labels from the SemanticKITTI dataset.
 /kitti/dataset/
           └── sequences/
                   ├── 00/
-                  │   ├── poses.txt
-                  │   ├── image_2/
-                  │   ├── image_3/
+                  │   |
+                  │   .
+                  │   .
+                  |   .
+                  |   |
                   │   ├── labels/
                   │   │     ├ 000000.label
                   │   │     └ 000001.label
-                  |   ├── voxels/
-                  |   |     ├ 000000.bin
-                  |   |     ├ 000000.label
-                  |   |     ├ 000000.occluded
-                  |   |     ├ 000000.invalid
-                  |   |     ├ 000001.bin
-                  |   |     ├ 000001.label
-                  |   |     ├ 000001.occluded
-                  |   |     ├ 000001.invalid
                   │   └── velodyne/
                   │         ├ 000000.bin
                   │         └ 000001.bin
